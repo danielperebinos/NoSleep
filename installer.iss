@@ -14,7 +14,7 @@ DefaultGroupName=NoSleep
 AllowNoIcons=yes
 ; Installer file settings
 OutputDir=.
-OutputBaseFilename=NoSleep_Setup
+OutputBaseFilename=NoSleepInstaller
 SetupIconFile=icon.ico
 Compression=lzma
 SolidCompression=yes
