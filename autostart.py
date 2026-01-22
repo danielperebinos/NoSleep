@@ -1,6 +1,5 @@
 import winreg
 import sys
-import os
 
 APP_NAME = "NoSleep"
 
@@ -11,7 +10,7 @@ def enable():
         winreg.HKEY_CURRENT_USER,
         r"Software\Microsoft\Windows\CurrentVersion\Run",
         0,
-        winreg.KEY_SET_VALUE
+        winreg.KEY_SET_VALUE,
     )
     winreg.SetValueEx(key, APP_NAME, 0, winreg.REG_SZ, path)
     winreg.CloseKey(key)
@@ -23,7 +22,7 @@ def disable():
             winreg.HKEY_CURRENT_USER,
             r"Software\Microsoft\Windows\CurrentVersion\Run",
             0,
-            winreg.KEY_SET_VALUE
+            winreg.KEY_SET_VALUE,
         )
         winreg.DeleteValue(key, APP_NAME)
         winreg.CloseKey(key)
