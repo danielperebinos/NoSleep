@@ -15,14 +15,14 @@ This project uses `uv` for dependency management (Python 3.12 required).
 uv sync
 
 # Run from source
-uv run python main.py
+uv run python src/main.py
 
 # Lint
 uv run ruff check .
 uv run ruff format .
 
 # Build standalone EXE
-uv run pyinstaller --onefile --noconsole --icon=icon.ico --add-data "icon.ico;." --name NoSleep main.py
+uv run pyinstaller --onefile --noconsole --icon=src/icon.ico --add-data "src/icon.ico;." --name NoSleep src/main.py
 ```
 
 ## Packaging / Installer

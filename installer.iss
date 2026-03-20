@@ -15,7 +15,7 @@ AllowNoIcons=yes
 ; Installer file settings
 OutputDir=.
 OutputBaseFilename=NoSleepInstaller
-SetupIconFile=icon.ico
+SetupIconFile=src\icon.ico
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
@@ -30,7 +30,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 ; Source: The path to your compiled .exe (ensure it is in the 'dist' folder)
 Source: "dist\NoSleep.exe"; DestDir: "{app}"; Flags: ignoreversion
 ; Include the icon file for logs and system tray usage
-Source: "icon.ico"; DestDir: "{app}"; Flags: ignoreversion
+Source: "src\icon.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 ; Start Menu and Desktop shortcuts
