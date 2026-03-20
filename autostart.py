@@ -1,30 +1,29 @@
-import winreg
 import sys
+import winreg
 
 APP_NAME = "NoSleep"
+_RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 
 
 def enable():
-    path = sys.executable
-    key = winreg.OpenKey(
-        winreg.HKEY_CURRENT_USER,
-        r"Software\Microsoft\Windows\CurrentVersion\Run",
-        0,
-        winreg.KEY_SET_VALUE,
-    )
-    winreg.SetValueEx(key, APP_NAME, 0, winreg.REG_SZ, path)
-    winreg.CloseKey(key)
+    if not getattr(sys, "frozen", False):
+        raise RuntimeError("Autostart can only be enabled for the packaged EXE, not when running from source.")
+    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _RUN_KEY, 0, winreg.KEY_SET_VALUE) as key:
+        winreg.SetValueEx(key, APP_NAME, 0, winreg.REG_SZ, sys.executable)
 
 
 def disable():
     try:
-        key = winreg.OpenKey(
-            winreg.HKEY_CURRENT_USER,
-            r"Software\Microsoft\Windows\CurrentVersion\Run",
-            0,
-            winreg.KEY_SET_VALUE,
-        )
-        winreg.DeleteValue(key, APP_NAME)
-        winreg.CloseKey(key)
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _RUN_KEY, 0, winreg.KEY_SET_VALUE) as key:
+            winreg.DeleteValue(key, APP_NAME)
     except FileNotFoundError:
         pass
+
+
+def is_enabled() -> bool:
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _RUN_KEY) as key:
+            winreg.QueryValueEx(key, APP_NAME)
+            return True
+    except FileNotFoundError:
+        return False

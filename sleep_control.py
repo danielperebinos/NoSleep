@@ -6,9 +6,11 @@ ES_DISPLAY_REQUIRED = 0x00000002
 
 
 def enable():
-    ctypes.windll.kernel32.SetThreadExecutionState(
+    result = ctypes.windll.kernel32.SetThreadExecutionState(
         ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED
     )
+    if result == 0:
+        raise RuntimeError("SetThreadExecutionState failed (returned 0)")
 
 
 def disable():

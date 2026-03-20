@@ -13,10 +13,14 @@ from loguru import logger
 import sleep_control
 import autostart
 
+# Single-instance lock port
+INSTANCE_LOCK_PORT = 47200
+
 # Global state
 enabled = True
 auto = False
 instance_lock = None
+_wake_event = threading.Event()
 
 
 def setup_logging():
@@ -30,8 +34,8 @@ def setup_logging():
     logging_directory.mkdir(parents=True, exist_ok=True)
     logging_path = logging_directory / "app.log"
 
-    # Console logging (only if terminal is available)
-    if sys.stderr:
+    # Console logging (only when running from source, not as a frozen GUI app)
+    if not getattr(sys, "frozen", False) and sys.stderr:
         logger.add(
             sys.stderr,
             level="INFO",
@@ -50,13 +54,13 @@ def setup_logging():
     logger.info(f"Logging initialized at: {logging_path}")
 
 
-def check_single_instance(port=47200):
+def check_single_instance():
     """Prevents multiple instances using a socket lock."""
     global instance_lock
     try:
         instance_lock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        instance_lock.bind(("127.0.0.1", port))
-        logger.info(f"Instance lock acquired on port {port}")
+        instance_lock.bind(("127.0.0.1", INSTANCE_LOCK_PORT))
+        logger.info(f"Instance lock acquired on port {INSTANCE_LOCK_PORT}")
     except socket.error:
         logger.warning("Another instance is already running. Exiting.")
         sys.exit(0)
@@ -67,9 +71,13 @@ def worker():
     logger.debug("Worker thread started")
     while True:
         if enabled:
-            sleep_control.enable()
-            logger.debug("Sleep prevention heartbeat sent")
-        time.sleep(30)
+            try:
+                sleep_control.enable()
+                logger.debug("Sleep prevention heartbeat sent")
+            except (OSError, RuntimeError) as e:
+                logger.error(f"sleep_control.enable() failed: {e}")
+        _wake_event.wait(timeout=30)
+        _wake_event.clear()
 
 
 def toggle_sleep(icon, item):
@@ -80,27 +88,33 @@ def toggle_sleep(icon, item):
 
     if not enabled:
         sleep_control.disable()
+
+    _wake_event.set()  # wake the worker so the change takes effect immediately
     icon.update_menu()
 
 
 def toggle_autostart(icon, item):
     global auto
-    auto = not auto
-    state = "ENABLED" if auto else "DISABLED"
-    logger.info(f"Autostart toggled: {state}")
-
-    if auto:
-        autostart.enable()
-    else:
-        autostart.disable()
+    new_state = not auto
+    try:
+        if new_state:
+            autostart.enable()
+        else:
+            autostart.disable()
+        auto = new_state  # only flip after the registry call succeeds
+        state = "ENABLED" if auto else "DISABLED"
+        logger.info(f"Autostart toggled: {state}")
+    except (OSError, RuntimeError) as e:
+        logger.error(f"Autostart toggle failed: {e}")
     icon.update_menu()
 
 
 def on_exit(icon, item):
     logger.info("Application exiting...")
     sleep_control.disable()
+    if instance_lock:
+        instance_lock.close()
     icon.stop()
-    sys.exit(0)
 
 
 def create_menu():
@@ -129,7 +143,7 @@ def load_icon():
                 img = Image.open(icon_path)
                 logger.info(f"Icon loaded from: {icon_path}")
                 return img
-        except Exception as e:
+        except OSError as e:
             logger.error(f"Failed to load icon at {icon_path}: {e}")
             continue
 
@@ -147,6 +161,10 @@ def main():
 
     check_single_instance()
 
+    global auto
+    auto = autostart.is_enabled()
+    logger.info(f"Autostart state read from registry: {'ENABLED' if auto else 'DISABLED'}")
+
     # Daemon thread ensures the thread exits when the main process does
     thread = threading.Thread(target=worker, daemon=True)
     thread.start()
@@ -158,6 +176,14 @@ def main():
         icon.run()
     except Exception as e:
         logger.critical(f"Main loop crashed: {e}")
+        raise
+    finally:
+        sleep_control.disable()
+        if instance_lock:
+            instance_lock.close()
+        logger.info("Cleanup complete")
+
+    sys.exit(0)
 
 
 if __name__ == "__main__":
