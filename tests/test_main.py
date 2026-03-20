@@ -1,7 +1,6 @@
 """Tests for main.py logic — state transitions, icon loading, error paths."""
+
 import sys
-import os
-import threading
 import types
 import pytest
 
@@ -9,19 +8,30 @@ import pytest
 @pytest.fixture(autouse=True)
 def stub_external_modules(monkeypatch):
     """Stub pystray, PIL, sleep_control, autostart, loguru so main.py can be imported."""
+
     # pystray stubs
     class FakeMenu:
         SEPARATOR = object()
-        def __init__(self, *items): pass
+
+        def __init__(self, *items):
+            pass
 
     class FakeMenuItem:
-        def __init__(self, *args, **kwargs): pass
+        def __init__(self, *args, **kwargs):
+            pass
 
     class FakeIcon:
-        def __init__(self, *args, **kwargs): pass
-        def update_menu(self): pass
-        def stop(self): pass
-        def run(self): pass
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def update_menu(self):
+            pass
+
+        def stop(self):
+            pass
+
+        def run(self):
+            pass
 
     pystray_mod = types.ModuleType("pystray")
     pystray_mod.Icon = FakeIcon
@@ -35,16 +45,26 @@ def stub_external_modules(monkeypatch):
     draw_mod = types.ModuleType("PIL.ImageDraw")
 
     class FakeImage:
-        def __init__(self, *a, **kw): pass
+        def __init__(self, *a, **kw):
+            pass
+
         @staticmethod
-        def new(*a, **kw): return FakeImage()
+        def new(*a, **kw):
+            return FakeImage()
+
         @staticmethod
-        def open(*a, **kw): return FakeImage()
+        def open(*a, **kw):
+            return FakeImage()
 
     class FakeDraw:
-        def __init__(self, *a, **kw): pass
-        def ellipse(self, *a, **kw): pass
-        def text(self, *a, **kw): pass
+        def __init__(self, *a, **kw):
+            pass
+
+        def ellipse(self, *a, **kw):
+            pass
+
+        def text(self, *a, **kw):
+            pass
 
     image_mod.Image = FakeImage
     image_mod.open = FakeImage.open
@@ -82,14 +102,29 @@ def stub_external_modules(monkeypatch):
 
     # loguru stub
     class FakeLogger:
-        def remove(self): pass
-        def add(self, *a, **kw): pass
-        def info(self, *a, **kw): pass
-        def debug(self, *a, **kw): pass
-        def warning(self, *a, **kw): pass
-        def error(self, *a, **kw): pass
-        def critical(self, *a, **kw): pass
-        def exception(self, *a, **kw): pass
+        def remove(self):
+            pass
+
+        def add(self, *a, **kw):
+            pass
+
+        def info(self, *a, **kw):
+            pass
+
+        def debug(self, *a, **kw):
+            pass
+
+        def warning(self, *a, **kw):
+            pass
+
+        def error(self, *a, **kw):
+            pass
+
+        def critical(self, *a, **kw):
+            pass
+
+        def exception(self, *a, **kw):
+            pass
 
     loguru_mod = types.ModuleType("loguru")
     loguru_mod.logger = FakeLogger()
@@ -97,13 +132,16 @@ def stub_external_modules(monkeypatch):
 
     import importlib
     import main
+
     importlib.reload(main)
 
 
 # ── toggle_sleep ──────────────────────────────────────────────────────────────
 
+
 def test_toggle_sleep_disables(monkeypatch):
     import main
+
     disabled_calls = []
     monkeypatch.setattr(main.sleep_control, "disable", lambda: disabled_calls.append(1))
 
@@ -118,6 +156,7 @@ def test_toggle_sleep_disables(monkeypatch):
 
 def test_toggle_sleep_enables(monkeypatch):
     import main
+
     main.sleep_enabled.clear()  # start disabled
 
     fake_icon = types.SimpleNamespace(update_menu=lambda: None)
@@ -128,6 +167,7 @@ def test_toggle_sleep_enables(monkeypatch):
 
 def test_toggle_sleep_disable_error_is_logged(monkeypatch):
     import main
+
     errors = []
     main.sleep_enabled.set()
 
@@ -145,6 +185,7 @@ def test_toggle_sleep_disable_error_is_logged(monkeypatch):
 
 def test_toggle_sleep_disable_runtime_error_is_logged(monkeypatch):
     import main
+
     errors = []
     main.sleep_enabled.set()
 
@@ -162,8 +203,10 @@ def test_toggle_sleep_disable_runtime_error_is_logged(monkeypatch):
 
 # ── toggle_autostart ──────────────────────────────────────────────────────────
 
+
 def test_toggle_autostart_enable(monkeypatch):
     import main
+
     main.auto.clear()
     enabled_calls = []
     monkeypatch.setattr(main.autostart, "enable", lambda: enabled_calls.append(1))
@@ -177,6 +220,7 @@ def test_toggle_autostart_enable(monkeypatch):
 
 def test_toggle_autostart_error_does_not_flip_state(monkeypatch):
     import main
+
     main.auto.clear()
 
     def raise_not_frozen():
@@ -194,15 +238,19 @@ def test_toggle_autostart_error_does_not_flip_state(monkeypatch):
 
 # ── check_single_instance ─────────────────────────────────────────────────────
 
+
 def test_check_single_instance_acquires_lock(monkeypatch):
-    import socket as _socket
     import main
+
     # Bind on an unused port to prove the lock is acquired
     bound_ports = []
 
     class FakeSocket:
-        def setsockopt(self, *a): pass
-        def bind(self, addr): bound_ports.append(addr[1])
+        def setsockopt(self, *a):
+            pass
+
+        def bind(self, addr):
+            bound_ports.append(addr[1])
 
     monkeypatch.setattr(main.socket, "socket", lambda *a, **kw: FakeSocket())
     main.instance_lock = None
@@ -215,8 +263,11 @@ def test_check_single_instance_exits_when_port_taken(monkeypatch):
     import main
 
     class BusySocket:
-        def setsockopt(self, *a): pass
-        def bind(self, addr): raise _socket.error("address in use")
+        def setsockopt(self, *a):
+            pass
+
+        def bind(self, addr):
+            raise _socket.error("address in use")
 
     monkeypatch.setattr(main.socket, "socket", lambda *a, **kw: BusySocket())
     with pytest.raises(SystemExit):
@@ -225,13 +276,16 @@ def test_check_single_instance_exits_when_port_taken(monkeypatch):
 
 # ── on_exit ───────────────────────────────────────────────────────────────────
 
+
 def test_on_exit_closes_lock_and_stops_icon(monkeypatch):
     import main
+
     stopped = []
     closed = []
 
     class FakeLock:
-        def close(self): closed.append(1)
+        def close(self):
+            closed.append(1)
 
     fake_icon = types.SimpleNamespace(stop=lambda: stopped.append(1))
     main.instance_lock = FakeLock()
@@ -245,6 +299,7 @@ def test_on_exit_closes_lock_and_stops_icon(monkeypatch):
 def test_on_exit_does_not_call_sleep_disable(monkeypatch):
     """disable() should NOT be called in on_exit — the finally block in main() handles it."""
     import main
+
     disable_calls = []
     monkeypatch.setattr(main.sleep_control, "disable", lambda: disable_calls.append(1))
     main.instance_lock = None
@@ -255,8 +310,10 @@ def test_on_exit_does_not_call_sleep_disable(monkeypatch):
 
 # ── create_menu ───────────────────────────────────────────────────────────────
 
+
 def test_create_menu_no_autostart_when_not_frozen(monkeypatch):
     import main
+
     autostart_items = []
 
     class CapturingMenuItem:
@@ -272,6 +329,7 @@ def test_create_menu_no_autostart_when_not_frozen(monkeypatch):
 
 def test_create_menu_has_autostart_when_frozen(monkeypatch):
     import main
+
     autostart_items = []
 
     class CapturingMenuItem:
@@ -286,6 +344,7 @@ def test_create_menu_has_autostart_when_frozen(monkeypatch):
 
 
 # ── setup_logging ─────────────────────────────────────────────────────────────
+
 
 def test_setup_logging_falls_back_when_mkdir_fails(monkeypatch, tmp_path):
     import main
@@ -312,8 +371,10 @@ def test_setup_logging_falls_back_when_mkdir_fails(monkeypatch, tmp_path):
 
 # ── load_icon ─────────────────────────────────────────────────────────────────
 
+
 def test_load_icon_uses_fallback_when_file_missing(monkeypatch, tmp_path):
     import main
+
     # Point __file__ to an empty temp dir so icon.ico does not exist
     monkeypatch.setattr(sys, "frozen", False, raising=False)
     monkeypatch.setattr(main, "__file__", str(tmp_path / "main.py"))

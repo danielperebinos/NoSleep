@@ -1,4 +1,5 @@
 """Tests for autostart.py — mocks winreg so no registry is touched."""
+
 import sys
 import pytest
 
@@ -52,6 +53,7 @@ def mock_winreg(monkeypatch):
 
     import importlib
     import autostart
+
     importlib.reload(autostart)
 
     return _store
@@ -59,11 +61,13 @@ def mock_winreg(monkeypatch):
 
 def test_is_enabled_false_when_key_absent():
     import autostart
+
     assert autostart.is_enabled() is False
 
 
 def test_enable_and_is_enabled(monkeypatch, mock_winreg):
     import autostart
+
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     autostart.enable()
     assert mock_winreg["NoSleep"] == sys.executable
@@ -72,12 +76,14 @@ def test_enable_and_is_enabled(monkeypatch, mock_winreg):
 
 def test_is_enabled_false_for_wrong_path(monkeypatch, mock_winreg):
     import autostart
+
     mock_winreg["NoSleep"] = "/some/other/path/nosleep.exe"
     assert autostart.is_enabled() is False
 
 
 def test_disable_removes_key(monkeypatch, mock_winreg):
     import autostart
+
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     autostart.enable()
     autostart.disable()
@@ -86,6 +92,7 @@ def test_disable_removes_key(monkeypatch, mock_winreg):
 
 def test_disable_is_idempotent():
     import autostart
+
     # Calling disable when the key is absent should not raise
     autostart.disable()
     autostart.disable()
@@ -93,6 +100,7 @@ def test_disable_is_idempotent():
 
 def test_enable_raises_when_not_frozen():
     import autostart
+
     # sys.frozen is not set in the test runner
     with pytest.raises(RuntimeError, match="packaged EXE"):
         autostart.enable()
