@@ -23,7 +23,7 @@ def disable():
 def is_enabled() -> bool:
     try:
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _RUN_KEY) as key:
-            winreg.QueryValueEx(key, APP_NAME)
-            return True
+            value, _ = winreg.QueryValueEx(key, APP_NAME)
+            return value == sys.executable
     except FileNotFoundError:
         return False

@@ -1,6 +1,5 @@
 import os
 import threading
-import time
 import sys
 import socket
 from pathlib import Path
@@ -17,7 +16,8 @@ import autostart
 INSTANCE_LOCK_PORT = 47200
 
 # Global state
-enabled = True
+_sleep_enabled = threading.Event()
+_sleep_enabled.set()  # sleep prevention is ON by default
 auto = False
 instance_lock = None
 _wake_event = threading.Event()
@@ -27,7 +27,8 @@ def setup_logging():
     """Initializes logging to console and a local AppData file using pathlib."""
     logger.remove()
 
-    app_data = Path(os.getenv("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+    local_appdata = os.environ.get("LOCALAPPDATA")
+    app_data = Path(local_appdata) if local_appdata else Path.home() / "AppData" / "Local"
     logging_directory = app_data / "NoSleep" / "logs"
 
     # Create directory structure
@@ -55,10 +56,11 @@ def setup_logging():
 
 
 def check_single_instance():
-    """Prevents multiple instances using a socket lock."""
+    """Prevents multiple instances using a socket lock with SO_EXCLUSIVEADDRUSE."""
     global instance_lock
     try:
         instance_lock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        instance_lock.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
         instance_lock.bind(("127.0.0.1", INSTANCE_LOCK_PORT))
         logger.info(f"Instance lock acquired on port {INSTANCE_LOCK_PORT}")
     except socket.error:
@@ -70,24 +72,27 @@ def worker():
     """Background thread to keep the system awake."""
     logger.debug("Worker thread started")
     while True:
-        if enabled:
-            try:
+        try:
+            if _sleep_enabled.is_set():
                 sleep_control.enable()
                 logger.debug("Sleep prevention heartbeat sent")
-            except (OSError, RuntimeError) as e:
-                logger.error(f"sleep_control.enable() failed: {e}")
+        except Exception as e:
+            logger.exception(f"Worker thread error: {e}")
         _wake_event.wait(timeout=30)
         _wake_event.clear()
 
 
 def toggle_sleep(icon, item):
-    global enabled
-    enabled = not enabled
-    state = "ENABLED" if enabled else "DISABLED"
-    logger.info(f"Sleep prevention toggled: {state}")
-
-    if not enabled:
-        sleep_control.disable()
+    if _sleep_enabled.is_set():
+        _sleep_enabled.clear()
+        logger.info("Sleep prevention toggled: DISABLED")
+        try:
+            sleep_control.disable()
+        except (OSError, RuntimeError) as e:
+            logger.error(f"sleep_control.disable() failed: {e}")
+    else:
+        _sleep_enabled.set()
+        logger.info("Sleep prevention toggled: ENABLED")
 
     _wake_event.set()  # wake the worker so the change takes effect immediately
     icon.update_menu()
@@ -110,20 +115,27 @@ def toggle_autostart(icon, item):
 
 
 def on_exit(icon, item):
+    global instance_lock
     logger.info("Application exiting...")
-    sleep_control.disable()
+    try:
+        sleep_control.disable()
+    except (OSError, RuntimeError) as e:
+        logger.error(f"sleep_control.disable() on exit failed: {e}")
     if instance_lock:
         instance_lock.close()
+        instance_lock = None  # prevent double-close in finally block
     icon.stop()
 
 
 def create_menu():
-    return Menu(
-        MenuItem("Prevent Sleep", toggle_sleep, checked=lambda item: enabled),
-        MenuItem("Autostart", toggle_autostart, checked=lambda item: auto),
-        Menu.SEPARATOR,
-        MenuItem("Exit", on_exit),
-    )
+    is_frozen = getattr(sys, "frozen", False)
+    menu_items = [
+        MenuItem("Prevent Sleep", toggle_sleep, checked=lambda item: _sleep_enabled.is_set()),
+    ]
+    if is_frozen:
+        menu_items.append(MenuItem("Autostart", toggle_autostart, checked=lambda item: auto))
+    menu_items += [Menu.SEPARATOR, MenuItem("Exit", on_exit)]
+    return Menu(*menu_items)
 
 
 def load_icon():
@@ -132,20 +144,14 @@ def load_icon():
     else:
         base_path = os.path.dirname(os.path.abspath(__file__))
 
-    possible_paths = [
-        os.path.join(base_path, "icon.ico"),
-        os.path.join(os.getcwd(), "icon.ico"),
-    ]
-
-    for icon_path in possible_paths:
-        try:
-            if os.path.exists(icon_path):
-                img = Image.open(icon_path)
-                logger.info(f"Icon loaded from: {icon_path}")
-                return img
-        except OSError as e:
-            logger.error(f"Failed to load icon at {icon_path}: {e}")
-            continue
+    icon_path = os.path.join(base_path, "icon.ico")
+    try:
+        if os.path.exists(icon_path):
+            img = Image.open(icon_path)
+            logger.info(f"Icon loaded from: {icon_path}")
+            return img
+    except OSError as e:
+        logger.error(f"Failed to load icon at {icon_path}: {e}")
 
     logger.warning("No icon file found, creating fallback visual")
     image = Image.new("RGB", (64, 64), color="blue")
@@ -178,7 +184,10 @@ def main():
         logger.critical(f"Main loop crashed: {e}")
         raise
     finally:
-        sleep_control.disable()
+        try:
+            sleep_control.disable()
+        except (OSError, RuntimeError) as e:
+            logger.error(f"sleep_control.disable() in finally failed: {e}")
         if instance_lock:
             instance_lock.close()
         logger.info("Cleanup complete")

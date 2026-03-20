@@ -1,4 +1,8 @@
+import sys
 import ctypes
+
+if sys.platform != "win32":
+    raise ImportError("sleep_control requires Windows")
 
 ES_CONTINUOUS = 0x80000000
 ES_SYSTEM_REQUIRED = 0x00000001
@@ -14,4 +18,6 @@ def enable():
 
 
 def disable():
-    ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS)
+    result = ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS)
+    if result == 0:
+        raise RuntimeError("SetThreadExecutionState(ES_CONTINUOUS) failed (returned 0)")
