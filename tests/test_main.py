@@ -314,9 +314,9 @@ def test_setup_logging_falls_back_when_mkdir_fails(monkeypatch, tmp_path):
 
 def test_load_icon_uses_fallback_when_file_missing(monkeypatch, tmp_path):
     import main
-    # Point base_path to an empty temp dir so icon.ico does not exist
+    # Point __file__ to an empty temp dir so icon.ico does not exist
     monkeypatch.setattr(sys, "frozen", False, raising=False)
-    monkeypatch.setattr(main.os.path, "abspath", lambda f: str(tmp_path / "main.py"))
+    monkeypatch.setattr(main, "__file__", str(tmp_path / "main.py"))
 
     img = main.load_icon()
     assert img is not None  # fallback image was created
@@ -339,7 +339,7 @@ def test_load_icon_returns_image_when_file_exists(monkeypatch, tmp_path):
         return FakeImg()
 
     monkeypatch.setattr(sys, "frozen", False, raising=False)
-    monkeypatch.setattr(main.os.path, "abspath", lambda f: str(tmp_path / "main.py"))
+    monkeypatch.setattr(main, "__file__", str(tmp_path / "main.py"))
     monkeypatch.setattr(main.Image, "open", fake_open, raising=False)
 
     img = main.load_icon()
