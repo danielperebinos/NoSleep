@@ -16,11 +16,11 @@ import autostart
 INSTANCE_LOCK_PORT = 47200
 
 # Global state
-_sleep_enabled = threading.Event()
-_sleep_enabled.set()  # sleep prevention is ON by default
-_auto = threading.Event()  # autostart state; set = enabled
+sleep_enabled = threading.Event()
+sleep_enabled.set()  # sleep prevention is ON by default
+auto = threading.Event()  # autostart state; set = enabled
 instance_lock = None
-_wake_event = threading.Event()
+wake_event = threading.Event()
 
 
 def setup_logging():
@@ -77,7 +77,7 @@ def check_single_instance():
         sys.exit(0)
 
 
-_MAX_WORKER_FAILURES = 5
+MAX_WORKER_FAILURES = 5
 
 
 def worker() -> None:
@@ -85,7 +85,7 @@ def worker() -> None:
     logger.debug("Worker thread started")
     consecutive_failures = 0
     while True:
-        if _sleep_enabled.is_set():
+        if sleep_enabled.is_set():
             try:
                 sleep_control.enable()
                 logger.debug("Sleep prevention heartbeat sent")
@@ -93,43 +93,43 @@ def worker() -> None:
             except Exception as e:
                 consecutive_failures += 1
                 logger.exception(f"Worker thread error: {e}")
-                if consecutive_failures >= _MAX_WORKER_FAILURES:
+                if consecutive_failures >= MAX_WORKER_FAILURES:
                     logger.critical(
                         f"sleep_control.enable() failed {consecutive_failures} times. Disabling."
                     )
-                    _sleep_enabled.clear()
+                    sleep_enabled.clear()
                     consecutive_failures = 0
         # Clear BEFORE waiting so a set() that arrives between wait() returning
         # and clear() is not silently discarded on the next cycle.
-        _wake_event.clear()
-        _wake_event.wait(timeout=30)
+        wake_event.clear()
+        wake_event.wait(timeout=30)
 
 
 def toggle_sleep(icon, item):
-    if _sleep_enabled.is_set():
-        _sleep_enabled.clear()
+    if sleep_enabled.is_set():
+        sleep_enabled.clear()
         logger.info("Sleep prevention toggled: DISABLED")
         try:
             sleep_control.disable()
         except (OSError, RuntimeError) as e:
             logger.error(f"sleep_control.disable() failed: {e}")
     else:
-        _sleep_enabled.set()
+        sleep_enabled.set()
         logger.info("Sleep prevention toggled: ENABLED")
 
-    _wake_event.set()  # wake the worker so the change takes effect immediately
+    wake_event.set()  # wake the worker so the change takes effect immediately
     icon.update_menu()
 
 
 def toggle_autostart(icon, item) -> None:
-    enabling = not _auto.is_set()
+    enabling = not auto.is_set()
     try:
         if enabling:
             autostart.enable()
-            _auto.set()
+            auto.set()
         else:
             autostart.disable()
-            _auto.clear()
+            auto.clear()
         logger.info(f"Autostart {'ENABLED' if enabling else 'DISABLED'}")
     except (OSError, RuntimeError) as e:
         logger.error(f"Autostart toggle failed: {e}")
@@ -150,13 +150,13 @@ def create_menu():
     is_frozen = getattr(sys, "frozen", False)
     menu_items = [
         MenuItem(
-            "Prevent Sleep", toggle_sleep, checked=lambda item: _sleep_enabled.is_set()
+            "Prevent Sleep", toggle_sleep, checked=lambda item: sleep_enabled.is_set()
         ),
     ]
     # Autostart only makes sense for the installed EXE, not when running from source
     if is_frozen:
         menu_items.append(
-            MenuItem("Autostart", toggle_autostart, checked=lambda item: _auto.is_set())
+            MenuItem("Autostart", toggle_autostart, checked=lambda item: auto.is_set())
         )
     menu_items += [Menu.SEPARATOR, MenuItem("Exit", on_exit)]
     return Menu(*menu_items)
@@ -186,7 +186,7 @@ def load_icon() -> Image.Image:
     return image
 
 
-def _cleanup() -> None:
+def cleanup() -> None:
     try:
         sleep_control.disable()
     except (OSError, RuntimeError) as e:
@@ -202,8 +202,8 @@ def main() -> None:
     check_single_instance()
 
     if autostart.is_enabled():
-        _auto.set()
-    logger.info(f"Autostart: {'ENABLED' if _auto.is_set() else 'DISABLED'}")
+        auto.set()
+    logger.info(f"Autostart: {'ENABLED' if auto.is_set() else 'DISABLED'}")
 
     threading.Thread(target=worker, daemon=True).start()
 
@@ -215,7 +215,7 @@ def main() -> None:
         logger.critical(f"Main loop crashed: {e}")
         raise
     finally:
-        _cleanup()
+        cleanup()
 
     sys.exit(0)
 

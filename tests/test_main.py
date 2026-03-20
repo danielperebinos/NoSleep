@@ -107,29 +107,29 @@ def test_toggle_sleep_disables(monkeypatch):
     disabled_calls = []
     monkeypatch.setattr(main.sleep_control, "disable", lambda: disabled_calls.append(1))
 
-    main._sleep_enabled.set()  # start enabled
+    main.sleep_enabled.set()  # start enabled
 
     fake_icon = types.SimpleNamespace(update_menu=lambda: None)
     main.toggle_sleep(fake_icon, None)
 
-    assert not main._sleep_enabled.is_set()
+    assert not main.sleep_enabled.is_set()
     assert len(disabled_calls) == 1
 
 
 def test_toggle_sleep_enables(monkeypatch):
     import main
-    main._sleep_enabled.clear()  # start disabled
+    main.sleep_enabled.clear()  # start disabled
 
     fake_icon = types.SimpleNamespace(update_menu=lambda: None)
     main.toggle_sleep(fake_icon, None)
 
-    assert main._sleep_enabled.is_set()
+    assert main.sleep_enabled.is_set()
 
 
 def test_toggle_sleep_disable_error_is_logged(monkeypatch):
     import main
     errors = []
-    main._sleep_enabled.set()
+    main.sleep_enabled.set()
 
     def raise_os_error():
         raise OSError("fail")
@@ -146,7 +146,7 @@ def test_toggle_sleep_disable_error_is_logged(monkeypatch):
 def test_toggle_sleep_disable_runtime_error_is_logged(monkeypatch):
     import main
     errors = []
-    main._sleep_enabled.set()
+    main.sleep_enabled.set()
 
     def raise_runtime_error():
         raise RuntimeError("api fail")
@@ -164,20 +164,20 @@ def test_toggle_sleep_disable_runtime_error_is_logged(monkeypatch):
 
 def test_toggle_autostart_enable(monkeypatch):
     import main
-    main._auto.clear()
+    main.auto.clear()
     enabled_calls = []
     monkeypatch.setattr(main.autostart, "enable", lambda: enabled_calls.append(1))
 
     fake_icon = types.SimpleNamespace(update_menu=lambda: None)
     main.toggle_autostart(fake_icon, None)
 
-    assert main._auto.is_set()
+    assert main.auto.is_set()
     assert len(enabled_calls) == 1
 
 
 def test_toggle_autostart_error_does_not_flip_state(monkeypatch):
     import main
-    main._auto.clear()
+    main.auto.clear()
 
     def raise_not_frozen():
         raise RuntimeError("not frozen")
@@ -187,7 +187,7 @@ def test_toggle_autostart_error_does_not_flip_state(monkeypatch):
     fake_icon = types.SimpleNamespace(update_menu=lambda: None)
     main.toggle_autostart(fake_icon, None)  # must not raise
 
-    assert not main._auto.is_set()  # state must not have flipped
+    assert not main.auto.is_set()  # state must not have flipped
 
 
 # ── load_icon ─────────────────────────────────────────────────────────────────
