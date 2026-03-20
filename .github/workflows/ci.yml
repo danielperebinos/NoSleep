@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+    tags-ignore: ["v*"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+        with: { version: "latest" }
+      - run: uv python install 3.12
+      - run: uv sync --all-groups
+      - run: uv run ruff format --check .
+      - run: uv run ruff check .
+
+  test:
+    name: Tests (pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+        with: { version: "latest" }
+      - run: uv python install 3.12
+      - run: uv sync --all-groups
+      - run: uv run pytest tests/ -v --tb=short
+
+  build-validate:
+    name: Build validation (Windows)
+    runs-on: windows-latest
+    needs: [lint, test]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+        with: { version: "latest" }
+      - run: uv python install 3.12
+      - run: uv sync --all-groups
+      - run: uv run pyinstaller --onefile --noconsole --icon=src/icon.ico --add-data "src/icon.ico;." --name NoSleep src/main.py
+      - name: Verify EXE
+        shell: pwsh
+        run: |
+          if (!(Test-Path "dist\NoSleep.exe")) { exit 1 }
+          Write-Host "EXE size: $((Get-Item 'dist\NoSleep.exe').Length) bytes"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NoSleep-ci-build
+          path: dist/NoSleep.exe
+          retention-days: 7

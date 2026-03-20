@@ -1,0 +1,93 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write
+
+jobs:
+  validate-version:
+    name: Validate version consistency
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.extract.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract version from tag
+        id: extract
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+      - name: Check pyproject.toml matches tag
+        run: |
+          TOML=$(grep -m1 '^version' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+          TAG="${{ steps.extract.outputs.version }}"
+          [ "$TOML" = "$TAG" ] || { echo "ERROR: pyproject.toml=$TOML tag=$TAG"; exit 1; }
+      - name: Check installer.iss matches tag
+        run: |
+          ISS=$(grep -m1 '^AppVersion=' installer.iss | sed 's/AppVersion=//')
+          TAG="${{ steps.extract.outputs.version }}"
+          [ "$ISS" = "$TAG" ] || { echo "ERROR: installer.iss=$ISS tag=$TAG"; exit 1; }
+
+  build-release:
+    name: Build EXE + installer (Windows)
+    runs-on: windows-latest
+    needs: validate-version
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+        with: { version: "latest" }
+      - run: uv python install 3.12
+      - run: uv sync --all-groups
+      - run: uv run pyinstaller --onefile --noconsole --icon=src/icon.ico --add-data "src/icon.ico;." --name NoSleep src/main.py
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+      - name: Build installer
+        shell: pwsh
+        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss'
+      - name: Verify artifacts
+        shell: pwsh
+        run: |
+          if (!(Test-Path "dist\NoSleep.exe")) { exit 1 }
+          if (!(Test-Path "NoSleepInstaller.exe")) { exit 1 }
+      - uses: actions/upload-artifact@v4
+        with: { name: NoSleep-exe, path: dist/NoSleep.exe }
+      - uses: actions/upload-artifact@v4
+        with: { name: NoSleep-installer, path: NoSleepInstaller.exe }
+
+  create-github-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [validate-version, build-release]
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/download-artifact@v4
+        with: { name: NoSleep-exe, path: release-assets/ }
+      - uses: actions/download-artifact@v4
+        with: { name: NoSleep-installer, path: release-assets/ }
+      - name: Generate release notes
+        id: notes
+        run: |
+          TAG="v${{ needs.validate-version.outputs.version }}"
+          PREV=$(git tag --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | grep -v "^${TAG}$" | head -1)
+          RANGE="${PREV:+${PREV}..}${TAG}"
+          {
+            echo "notes<<EOF"
+            echo "## What's Changed"
+            git log "${RANGE}" --pretty=format:"- %s (%h)" --no-merges
+            [ -n "$PREV" ] && echo "" && echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV}...${TAG}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+      - name: Publish release
+        env: { GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
+        run: |
+          TAG="v${{ needs.validate-version.outputs.version }}"
+          gh release create "$TAG" \
+            release-assets/NoSleep.exe \
+            release-assets/NoSleepInstaller.exe \
+            --title "NoSleep $TAG" \
+            --notes "${{ steps.notes.outputs.notes }}" \
+            --verify-tag
