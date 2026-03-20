@@ -6,8 +6,8 @@
 ; Place your generated GUID here. Double '{{' is required to escape the character.
 AppId={{94856465-36D1-4375-8AA5-174CB59EB8E5}
 AppName=NoSleep
-AppVersion=1.0
-AppPublisher=Stepan Capsamun
+AppVersion=1.0.0
+AppPublisher=Daniel Perebinos
 ; {autopf} points to the standard Program Files directory
 DefaultDirName={autopf}\NoSleep
 DefaultGroupName=NoSleep

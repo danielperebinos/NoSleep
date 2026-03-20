@@ -18,7 +18,7 @@ INSTANCE_LOCK_PORT = 47200
 # Global state
 _sleep_enabled = threading.Event()
 _sleep_enabled.set()  # sleep prevention is ON by default
-auto = False
+_auto = threading.Event()  # autostart state; set = enabled
 instance_lock = None
 _wake_event = threading.Event()
 
@@ -31,10 +31,6 @@ def setup_logging():
     app_data = Path(local_appdata) if local_appdata else Path.home() / "AppData" / "Local"
     logging_directory = app_data / "NoSleep" / "logs"
 
-    # Create directory structure
-    logging_directory.mkdir(parents=True, exist_ok=True)
-    logging_path = logging_directory / "app.log"
-
     # Console logging (only when running from source, not as a frozen GUI app)
     if not getattr(sys, "frozen", False) and sys.stderr:
         logger.add(
@@ -42,6 +38,15 @@ def setup_logging():
             level="INFO",
             format="<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <level>{message}</level>",
         )
+
+    # Create directory structure; fall back to console-only logging on failure
+    try:
+        logging_directory.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        logger.warning(f"Could not create log directory {logging_directory}: {e}. File logging disabled.")
+        return
+
+    logging_path = logging_directory / "app.log"
 
     # File logging with rotation and retention
     logger.add(
@@ -68,18 +73,33 @@ def check_single_instance():
         sys.exit(0)
 
 
+_MAX_WORKER_FAILURES = 5
+
+
 def worker():
     """Background thread to keep the system awake."""
     logger.debug("Worker thread started")
+    consecutive_failures = 0
     while True:
         try:
             if _sleep_enabled.is_set():
                 sleep_control.enable()
                 logger.debug("Sleep prevention heartbeat sent")
+                consecutive_failures = 0
         except Exception as e:
+            consecutive_failures += 1
             logger.exception(f"Worker thread error: {e}")
-        _wake_event.wait(timeout=30)
+            if consecutive_failures >= _MAX_WORKER_FAILURES:
+                logger.critical(
+                    f"sleep_control.enable() failed {consecutive_failures} times in a row. "
+                    "Disabling sleep prevention until re-toggled."
+                )
+                _sleep_enabled.clear()
+                consecutive_failures = 0
+        # Clear BEFORE waiting so a set() that arrives between wait() returning
+        # and clear() is not silently discarded on the next cycle.
         _wake_event.clear()
+        _wake_event.wait(timeout=30)
 
 
 def toggle_sleep(icon, item):
@@ -99,15 +119,18 @@ def toggle_sleep(icon, item):
 
 
 def toggle_autostart(icon, item):
-    global auto
-    new_state = not auto
+    new_state = not _auto.is_set()
     try:
         if new_state:
             autostart.enable()
         else:
             autostart.disable()
-        auto = new_state  # only flip after the registry call succeeds
-        state = "ENABLED" if auto else "DISABLED"
+        # Only flip after the registry call succeeds
+        if new_state:
+            _auto.set()
+        else:
+            _auto.clear()
+        state = "ENABLED" if _auto.is_set() else "DISABLED"
         logger.info(f"Autostart toggled: {state}")
     except (OSError, RuntimeError) as e:
         logger.error(f"Autostart toggle failed: {e}")
@@ -117,10 +140,7 @@ def toggle_autostart(icon, item):
 def on_exit(icon, item):
     global instance_lock
     logger.info("Application exiting...")
-    try:
-        sleep_control.disable()
-    except (OSError, RuntimeError) as e:
-        logger.error(f"sleep_control.disable() on exit failed: {e}")
+    # sleep_control.disable() is called in the finally block of main(); no need to call it here
     if instance_lock:
         instance_lock.close()
         instance_lock = None  # prevent double-close in finally block
@@ -132,8 +152,9 @@ def create_menu():
     menu_items = [
         MenuItem("Prevent Sleep", toggle_sleep, checked=lambda item: _sleep_enabled.is_set()),
     ]
+    # Autostart only makes sense for the installed EXE, not when running from source
     if is_frozen:
-        menu_items.append(MenuItem("Autostart", toggle_autostart, checked=lambda item: auto))
+        menu_items.append(MenuItem("Autostart", toggle_autostart, checked=lambda item: _auto.is_set()))
     menu_items += [Menu.SEPARATOR, MenuItem("Exit", on_exit)]
     return Menu(*menu_items)
 
@@ -167,9 +188,9 @@ def main():
 
     check_single_instance()
 
-    global auto
-    auto = autostart.is_enabled()
-    logger.info(f"Autostart state read from registry: {'ENABLED' if auto else 'DISABLED'}")
+    if autostart.is_enabled():
+        _auto.set()
+    logger.info(f"Autostart state read from registry: {'ENABLED' if _auto.is_set() else 'DISABLED'}")
 
     # Daemon thread ensures the thread exits when the main process does
     thread = threading.Thread(target=worker, daemon=True)

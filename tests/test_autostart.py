@@ -12,6 +12,7 @@ def mock_winreg(monkeypatch):
 
     HKEY_CURRENT_USER = 0x80000001
     KEY_SET_VALUE = 0x0002
+    KEY_READ = 0x20019
     REG_SZ = 1
 
     class FakeKey:
@@ -40,6 +41,7 @@ def mock_winreg(monkeypatch):
     fake_winreg = types.ModuleType("winreg")
     fake_winreg.HKEY_CURRENT_USER = HKEY_CURRENT_USER
     fake_winreg.KEY_SET_VALUE = KEY_SET_VALUE
+    fake_winreg.KEY_READ = KEY_READ
     fake_winreg.REG_SZ = REG_SZ
     fake_winreg.OpenKey = OpenKey
     fake_winreg.SetValueEx = SetValueEx
@@ -94,3 +96,25 @@ def test_enable_raises_when_not_frozen():
     # sys.frozen is not set in the test runner
     with pytest.raises(RuntimeError, match="packaged EXE"):
         autostart.enable()
+
+
+def test_disable_survives_permission_error(monkeypatch, mock_winreg):
+    import autostart
+    import winreg
+
+    def raise_permission_error(*a, **kw):
+        raise PermissionError("access denied")
+
+    monkeypatch.setattr(winreg, "OpenKey", raise_permission_error)
+    autostart.disable()  # must not raise
+
+
+def test_is_enabled_returns_false_on_permission_error(monkeypatch, mock_winreg):
+    import autostart
+    import winreg
+
+    def raise_permission_error(*a, **kw):
+        raise PermissionError("access denied")
+
+    monkeypatch.setattr(winreg, "OpenKey", raise_permission_error)
+    assert autostart.is_enabled() is False

@@ -118,8 +118,6 @@ def test_toggle_sleep_disables(monkeypatch):
 
 def test_toggle_sleep_enables(monkeypatch):
     import main
-    enabled_calls = []
-    # worker calls enable(); simulate it being triggered
     main._sleep_enabled.clear()  # start disabled
 
     fake_icon = types.SimpleNamespace(update_menu=lambda: None)
@@ -133,7 +131,10 @@ def test_toggle_sleep_disable_error_is_logged(monkeypatch):
     errors = []
     main._sleep_enabled.set()
 
-    monkeypatch.setattr(main.sleep_control, "disable", lambda: (_ for _ in ()).throw(OSError("fail")))
+    def raise_os_error():
+        raise OSError("fail")
+
+    monkeypatch.setattr(main.sleep_control, "disable", raise_os_error)
     monkeypatch.setattr(main.logger, "error", lambda msg: errors.append(msg))
 
     fake_icon = types.SimpleNamespace(update_menu=lambda: None)
@@ -142,30 +143,171 @@ def test_toggle_sleep_disable_error_is_logged(monkeypatch):
     assert any("fail" in str(e) for e in errors)
 
 
+def test_toggle_sleep_disable_runtime_error_is_logged(monkeypatch):
+    import main
+    errors = []
+    main._sleep_enabled.set()
+
+    def raise_runtime_error():
+        raise RuntimeError("api fail")
+
+    monkeypatch.setattr(main.sleep_control, "disable", raise_runtime_error)
+    monkeypatch.setattr(main.logger, "error", lambda msg: errors.append(msg))
+
+    fake_icon = types.SimpleNamespace(update_menu=lambda: None)
+    main.toggle_sleep(fake_icon, None)  # must not raise
+
+    assert any("api fail" in str(e) for e in errors)
+
+
 # ── toggle_autostart ──────────────────────────────────────────────────────────
 
 def test_toggle_autostart_enable(monkeypatch):
     import main
-    main.auto = False
+    main._auto.clear()
     enabled_calls = []
     monkeypatch.setattr(main.autostart, "enable", lambda: enabled_calls.append(1))
 
     fake_icon = types.SimpleNamespace(update_menu=lambda: None)
     main.toggle_autostart(fake_icon, None)
 
-    assert main.auto is True
+    assert main._auto.is_set()
     assert len(enabled_calls) == 1
 
 
 def test_toggle_autostart_error_does_not_flip_state(monkeypatch):
     import main
-    main.auto = False
-    monkeypatch.setattr(main.autostart, "enable", lambda: (_ for _ in ()).throw(RuntimeError("not frozen")))
+    main._auto.clear()
+
+    def raise_not_frozen():
+        raise RuntimeError("not frozen")
+
+    monkeypatch.setattr(main.autostart, "enable", raise_not_frozen)
 
     fake_icon = types.SimpleNamespace(update_menu=lambda: None)
     main.toggle_autostart(fake_icon, None)  # must not raise
 
-    assert main.auto is False  # state must not have flipped
+    assert not main._auto.is_set()  # state must not have flipped
+
+
+# ── load_icon ─────────────────────────────────────────────────────────────────
+
+# ── check_single_instance ─────────────────────────────────────────────────────
+
+def test_check_single_instance_acquires_lock(monkeypatch):
+    import socket as _socket
+    import main
+    # Bind on an unused port to prove the lock is acquired
+    bound_ports = []
+
+    class FakeSocket:
+        def setsockopt(self, *a): pass
+        def bind(self, addr): bound_ports.append(addr[1])
+
+    monkeypatch.setattr(main.socket, "socket", lambda *a, **kw: FakeSocket())
+    main.instance_lock = None
+    main.check_single_instance()
+    assert main.INSTANCE_LOCK_PORT in bound_ports
+
+
+def test_check_single_instance_exits_when_port_taken(monkeypatch):
+    import socket as _socket
+    import main
+
+    class BusySocket:
+        def setsockopt(self, *a): pass
+        def bind(self, addr): raise _socket.error("address in use")
+
+    monkeypatch.setattr(main.socket, "socket", lambda *a, **kw: BusySocket())
+    with pytest.raises(SystemExit):
+        main.check_single_instance()
+
+
+# ── on_exit ───────────────────────────────────────────────────────────────────
+
+def test_on_exit_closes_lock_and_stops_icon(monkeypatch):
+    import main
+    stopped = []
+    closed = []
+
+    class FakeLock:
+        def close(self): closed.append(1)
+
+    fake_icon = types.SimpleNamespace(stop=lambda: stopped.append(1))
+    main.instance_lock = FakeLock()
+    main.on_exit(fake_icon, None)
+
+    assert len(stopped) == 1
+    assert len(closed) == 1
+    assert main.instance_lock is None
+
+
+def test_on_exit_does_not_call_sleep_disable(monkeypatch):
+    """disable() should NOT be called in on_exit — the finally block in main() handles it."""
+    import main
+    disable_calls = []
+    monkeypatch.setattr(main.sleep_control, "disable", lambda: disable_calls.append(1))
+    main.instance_lock = None
+    fake_icon = types.SimpleNamespace(stop=lambda: None)
+    main.on_exit(fake_icon, None)
+    assert len(disable_calls) == 0
+
+
+# ── create_menu ───────────────────────────────────────────────────────────────
+
+def test_create_menu_no_autostart_when_not_frozen(monkeypatch):
+    import main
+    autostart_items = []
+
+    class CapturingMenuItem:
+        def __init__(self, label, *a, **kw):
+            if label == "Autostart":
+                autostart_items.append(label)
+
+    monkeypatch.setattr(main, "MenuItem", CapturingMenuItem)
+    monkeypatch.setattr(sys, "frozen", False, raising=False)
+    main.create_menu()
+    assert len(autostart_items) == 0
+
+
+def test_create_menu_has_autostart_when_frozen(monkeypatch):
+    import main
+    autostart_items = []
+
+    class CapturingMenuItem:
+        def __init__(self, label, *a, **kw):
+            if label == "Autostart":
+                autostart_items.append(label)
+
+    monkeypatch.setattr(main, "MenuItem", CapturingMenuItem)
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    main.create_menu()
+    assert len(autostart_items) == 1
+
+
+# ── setup_logging ─────────────────────────────────────────────────────────────
+
+def test_setup_logging_falls_back_when_mkdir_fails(monkeypatch, tmp_path):
+    import main
+    from pathlib import Path
+
+    def bad_mkdir(parents=False, exist_ok=False):
+        raise OSError("no space left on device")
+
+    warnings = []
+    monkeypatch.setattr(main.logger, "warning", lambda msg: warnings.append(msg))
+    monkeypatch.setattr(main.logger, "add", lambda *a, **kw: None)
+    monkeypatch.setattr(main.logger, "remove", lambda: None)
+    monkeypatch.setattr(main.logger, "info", lambda *a, **kw: None)
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+
+    # Patch Path.mkdir to raise
+    original_mkdir = Path.mkdir
+    monkeypatch.setattr(Path, "mkdir", lambda self, **kw: bad_mkdir(**kw))
+    main.setup_logging()  # must not raise
+    monkeypatch.setattr(Path, "mkdir", original_mkdir)
+
+    assert any("File logging disabled" in str(w) for w in warnings)
 
 
 # ── load_icon ─────────────────────────────────────────────────────────────────
