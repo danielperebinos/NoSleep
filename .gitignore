@@ -6,3 +6,13 @@ dist/
 *.spec
 *.log
 *.exe
+__pycache__/
+
+# AI Factory - transient/local
+.ai-factory/plans/
+.ai-factory/rules/
+.ai-factory.json
+
+# Claude Code - local settings
+.claude/
+.mcp.json

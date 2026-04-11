@@ -10,7 +10,7 @@
 
 **A lightweight Windows system tray utility that keeps your PC awake — without touching your power settings.**
 
-[⬇️ Download Installer](#-download) · [🚀 Run from Source](#-run-from-source) · [🛠️ Build EXE](#%EF%B8%8F-build-a-standalone-executable)
+[⬇️ Download](#-download) · [🚀 Quick Start](#-quick-start) · [📖 Documentation](#-documentation)
 
 </div>
 
@@ -19,8 +19,6 @@
 ## ✨ What is NoSleep?
 
 NoSleep sits quietly in your **system tray** and prevents Windows from sleeping or hibernating by using the native `SetThreadExecutionState` API — no admin rights, no power plan changes, completely reversible.
-
-Perfect for:
 
 | Use Case | Why NoSleep helps |
 |---|---|
@@ -53,113 +51,27 @@ Head to the [**Releases**](../../releases) page and grab the latest:
 
 ---
 
-## 🚀 Run from Source
-
-### Prerequisites
-
-- Windows 10 / 11
-- Python 3.12
-- [uv](https://github.com/astral-sh/uv) package manager
-
-### Setup
+## 🚀 Quick Start
 
 ```bash
-# Clone the repository
 git clone https://github.com/daniel-perebinos/NoSleep.git
 cd NoSleep
-
-# Install dependencies
 uv sync
-
-# Run the app
 uv run python src/main.py
 ```
 
----
-
-## 🛠️ Build a Standalone Executable
-
-```bash
-uv run pyinstaller --onefile --noconsole --icon=src/icon.ico --add-data "src/icon.ico;." --name NoSleep src/main.py
-```
-
-> 💡 `--noconsole` is required for tray apps — it prevents a Command Prompt window from appearing.
-
-The output EXE will be at `dist/NoSleep.exe`.
-
-### 📦 Build the Windows Installer
-
-After building the EXE, compile the installer with [Inno Setup](https://jrsoftware.org/isinfo.php):
-
-```powershell
-& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
-```
-
-Output: `NoSleepInstaller.exe`
+> Requires **Python 3.12** and [**uv**](https://github.com/astral-sh/uv). See [Getting Started](docs/getting-started.md) for full setup details.
 
 ---
 
-## 🏗️ Architecture
+## 📖 Documentation
 
-The app has three source files with distinct responsibilities:
-
-```
-src/
-├── main.py           # Entry point, logging setup, tray icon loop
-├── sleep_control.py  # ctypes wrapper for SetThreadExecutionState
-└── autostart.py      # Windows Registry autostart key management
-```
-
-| File | Responsibility |
-|---|---|
-| `main.py` | Sets up loguru logging, enforces single-instance via socket lock (port 47200), starts daemon worker thread, runs pystray event loop |
-| `sleep_control.py` | `enable()` sets `ES_CONTINUOUS \| ES_SYSTEM_REQUIRED \| ES_DISPLAY_REQUIRED`; `disable()` resets to `ES_CONTINUOUS` |
-| `autostart.py` | Reads/writes `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` |
-
-**Runtime flow:**
-
-```
-Startup → socket lock → worker thread → enable() every 30s
-                      ↓
-              Tray menu toggle → update global state → re-render menu
-                      ↓
-              On exit → disable() → restore normal sleep behavior
-```
-
----
-
-## 📂 Logs & Data
-
-| Item | Location |
-|---|---|
-| 📁 Log Folder | `%LOCALAPPDATA%\NoSleep\logs\` |
-| 🔄 Log Rotation | `1 MB` per file |
-| 🗑️ Retention | `7 days` |
-
----
-
-## 🧪 Development
-
-```bash
-# Lint & format
-uv run ruff check .
-uv run ruff format .
-
-# Run tests
-uv run pytest
-```
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Here's how:
-
-1. 🍴 Fork the project
-2. 🌿 Create your feature branch: `git checkout -b feature/AmazingFeature`
-3. 💾 Commit your changes: `git commit -m "Add AmazingFeature"`
-4. 📤 Push to the branch: `git push origin feature/AmazingFeature`
-5. 🔁 Open a Pull Request
+| Guide | Description |
+|-------|-------------|
+| [Getting Started](docs/getting-started.md) | Installation, setup, logs |
+| [Architecture](docs/architecture.md) | Module structure and runtime flow |
+| [Building](docs/building.md) | Build standalone EXE and Windows installer |
+| [Development](docs/development.md) | Linting, testing, contributing |
 
 ---
 
