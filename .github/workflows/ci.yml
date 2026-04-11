@@ -7,12 +7,15 @@ on:
   pull_request:
     branches: ["**"]
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   lint:
     name: Lint (ruff)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v4
         with: { version: "latest" }
       - run: uv python install 3.12
@@ -24,7 +27,7 @@ jobs:
     name: Tests (pytest)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v4
         with: { version: "latest" }
       - run: uv python install 3.12
@@ -36,7 +39,7 @@ jobs:
     runs-on: windows-latest
     needs: [lint, test]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v4
         with: { version: "latest" }
       - run: uv python install 3.12
@@ -47,7 +50,7 @@ jobs:
         run: |
           if (!(Test-Path "dist\NoSleep.exe")) { exit 1 }
           Write-Host "EXE size: $((Get-Item 'dist\NoSleep.exe').Length) bytes"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4 # TODO: upgrade to v5 when available (Node.js 24)
         with:
           name: NoSleep-ci-build
           path: dist/NoSleep.exe
